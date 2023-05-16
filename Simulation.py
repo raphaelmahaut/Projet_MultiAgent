@@ -111,10 +111,11 @@ class FleetSimulation:
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# !!!!!!! PRévoir un add data from robot avec l index du robot
+# !!!!!!! Prévoir un add data from robot avec l index du robot
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     # -------------------------------------------------------------------------
+
 
     def addDataFromFleet(self, fleet):
         # -------------------------------------------------------------------------
@@ -212,11 +213,6 @@ if __name__ == '__main__':
     kp = 0.4
 
     for t in simulation.t:
-
-        #        #proportional control law to common reference state
-        #        referenceState= np.array([[2.] , [1.] ])
-        #        for r in range(0, fleet.nbOfRobots):
-        #            fleet.robot[r].ctrl = kp* (referenceState - fleet.robot[r].state)
 
         # consensus
         for r in range(0, fleet.nbOfRobots):
