@@ -59,17 +59,34 @@ import time
 # ==============   "GLOBAL" VARIABLES KNOWN BY ALL THE FUNCTIONS ===================
 # all variables declared here will be known by functions below
 # use keyword "global" inside a function if the variable needs to be modified by the function
-Mode = [(1, 2, 3), (), ()]
 
-a = 0.3
+# depend on Fleet definition in Simu.py
+nbCF = 3
+nbTB3 = 1
+
+# in Mode possibility for crazyfly
+# 0 : vol en formation
+# 1 : descente
+# 2 : remonte
+# 3 : tourne autour
+# TODO: anticollision
+
+Mode = np.zeros(nbCF+nbTB3)
+
+cf_mask = np.zeros(Mode.shape, dtype=bool)
+cf_mask[:nbCF] = True
+tb3_mask = np.zeros(Mode.shape, dtype=bool)
+tb3_mask[nbCF:] = True
+
+dist_inter_cf_mode_0 = 2
 t = time.time()
 
 
 def reg(n):
-    global a
+    global dist_inter_cf_mode_0
 
     Poses = [(0, 0, 0)]
-    r = a/(2*np.cos(np.pi/n))
+    r = dist_inter_cf_mode_0/(2*np.cos(np.pi/n))
     for i in range(n):
         Poses.append((r*np.cos(2*np.pi*i/n), r*np.sin(2*np.pi*i/n), 0))
     return Poses
@@ -77,6 +94,14 @@ def reg(n):
 
 def ref(t):
     return (-4, 0, 1.5)
+
+
+def get_absolute_index(robotNo, cf_poses, robot_type):
+    if robot_type == "Crazy":
+        return robotNo-1
+    if robot_type == "Turtle":
+        return robotNo-1 + len(cf_poses[0])
+
 
 # ===================================================================================
 
@@ -97,7 +122,7 @@ def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacl
     nbOBSTACLE = len(obstacle_pose[0])
 
     #  --- TO BE MODIFIED ---
-    vx = 0.0
+    vx = 1.0
     vy = 0.0
     # -----------------------
 
@@ -127,19 +152,22 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     land = False
 
     kp = 1
-    ko = 0.1
+    ko = 10
     Poses = reg(nbCF)
+    abs_cf_id = get_absolute_index(robotNo, cf_poses, "Crazy")
 
-    if robotNo in Mode[0]:
-        Poses = reg(len(Mode[0]))
-        for i in Mode[0]:
+    if Mode[abs_cf_id] == 0:
+        Poses = reg(Mode[Mode == 0].shape[0])
+        robot_in_same_mode = np.logical_and(Mode == 0, cf_mask)
+        for i in np.where(robot_in_same_mode)[0]:
             if i != robotNo:
                 vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0,
-                           i-1] - (Poses[robotNo][0] - Poses[i][0]))
+                           i-1] - (Poses[abs_cf_id+1][0] - Poses[i][0]))
                 vy += -kp*(cf_poses[1, robotNo-1] - cf_poses[1,
-                           i-1] - (Poses[robotNo][1] - Poses[i][1]))
+                           i-1] - (Poses[abs_cf_id+1][1] - Poses[i][1]))
                 vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2,
-                           i-1] - (Poses[robotNo][2] - Poses[i][2]))
+                           i-1] - (Poses[abs_cf_id+1][2] - Poses[i][2]))
+
         Ref = ref(0)
         vx += -ko*(cf_poses[0, robotNo-1] - Ref[0] -
                    (Poses[robotNo][0] - Poses[0][0]))
@@ -148,11 +176,12 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         vz += -ko*(cf_poses[2, robotNo-1] - Ref[2] -
                    (Poses[robotNo][2] - Poses[0][2]))
 
-    elif robotNo in Mode[1]:
+    elif Mode[abs_cf_id] == 1:
         pass
-    elif robotNo in Mode[2]:
+    elif Mode[abs_cf_id] == 2:
         pass
-
+    elif Mode[abs_cf_id] == 3:
+        pass
     # -----------------------
 
     return vx, vy, vz, takeoff, land

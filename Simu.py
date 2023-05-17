@@ -2,18 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tp_algos import tb3_controller, cf_controller, rmtt_controller
 
-
-def reg(n):
-    global a
-
-    Poses = []
-    r = a/(2*np.cos(np.pi/n))
-    for i in range(n):
-        Poses.append((r*np.cos(2*np.pi*i/n), r*np.sin(2*np.pi*i/n), 1.5))
-    return Poses
-
-
 # =============================================================================
+
+
 class Robot:
     # =============================================================================
 
@@ -222,7 +213,7 @@ class Simulateur:
             unique_handles = [handles[labels.index(
                 label)] for label in unique_labels]
 
-            x = [-5, 5, 5, -5]
+            x = [-4, 4, 4, -4]
             y = [-2, -2, 2, 2]
             z = [0, 0, 0, 0]
             ax.plot_trisurf(x, y, z, linewidth=0.2,
