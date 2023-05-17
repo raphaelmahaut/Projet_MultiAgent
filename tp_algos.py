@@ -79,7 +79,10 @@ tb3_mask = np.zeros(Mode.shape, dtype=bool)
 tb3_mask[nbCF:] = True
 
 dist_inter_cf_mode_0 = 2
-t = time.time()
+t0 = time.time()
+
+list_resources = []
+attrib_resources = {i:None for i in range(nbCF)}
 
 
 def reg(n):
@@ -144,6 +147,10 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     # number of total obstacle positions in the environment
     nbOBSTACLE = len(obstacle_pose[0])
 
+    global t0
+    global list_resources
+    global attrib_resources
+
     #  --- TO BE MODIFIED ---
     vx = 0.0
     vy = 0.0
@@ -182,6 +189,34 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         pass
     elif Mode[abs_cf_id] == 3:
         pass
+
+    # --- TRANSITIONS ---
+
+    # From 0 (formation) to 1 (descente)
+    for resource in list_resources:
+        if (Mode[abs_cf_id] == 0) and (np.linalg.norm(ref(time.time()-t0)[:2] - resource[:2]) < 1.1) and (abs_cf_id == np.where(Mode == 0)[0][0]):
+            list_resources.remove(resource)
+            attrib_resources[abs_cf_id] = resource  # resource becomes the drone's target
+            print('Drone ' + str(abs_cf_id) + ' is getting the resource at ' + str(resource))
+            Mode[abs_cf_id] = 1
+    
+    # From 1 (descente) to 2 (remonte)
+    if (Mode[abs_cf_id] == 1) and (np.linalg.norm(cf_poses[:,robotNo-1] - resource) < 0.3):
+        print('The resource at ' + str(attrib_resources[abs_cf_id]) + ' was collected by drone ' + str(abs_cf_id))
+        Mode[abs_cf_id] = 2
+    
+    # From 2 (remonte) to 3 (retourne a la formation)
+    tb3_poses[2] = 0
+    if (Mode[abs_cf_id] == 2) and (np.linalg.norm(cf_poses[:,robotNo-1] - tb3_poses) < 0.4):
+        print('The resource that was at ' + str(attrib_resources[abs_cf_id]) + ' was delivered by drone ' + str(abs_cf_id))
+        attrib_resources[abs_cf_id] = None
+        Mode[abs_cf_id] = 3
+    
+    # From 3 (retourne a la formation) to 0 (formation)
+    if (Mode[abs_cf_id] == 3) and (np.linalg.norm(cf_poses[:,robotNo-1] - ref(time.time()-t0)) < 1):
+        print('Drone ' + str(abs_cf_id) + ' has returned to formation')
+        Mode[abs_cf_id] = 0
+
     # -----------------------
 
     return vx, vy, vz, takeoff, land
