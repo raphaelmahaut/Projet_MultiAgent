@@ -54,6 +54,7 @@
 
 import numpy as np
 import math
+import random as rd
 import time
 
 # ==============   "GLOBAL" VARIABLES KNOWN BY ALL THE FUNCTIONS ===================
@@ -82,7 +83,11 @@ dist_inter_cf_mode_0 = 2
 radius_inter_robot_security_xyz = 0.5
 flee_speed = 0.5
 
-t = time.time()
+t0 = time.time()
+
+list_resources = [
+    np.array([[rd.uniform(-1, 3)], [rd.uniform(-2, 2)], [0]]) for i in range(3)]
+attrib_resources = {i: None for i in range(nbCF)}
 
 
 def reg(n):
@@ -95,8 +100,29 @@ def reg(n):
     return Poses
 
 
+Path = [[(-3, 0), (-3, 1)], [(-3, 1), (3, 1)],
+        [(3, 1), (3, -1)], [(3, -1), (-3, -1)]]
+
+
 def ref(t):
-    return (-4, 0, 1.5)
+    global init_state, Path, t0
+    vit = 0.3
+    if not Path:
+        return np.array([[-4], [0], [1.5]])
+
+    tps = np.sqrt((Path[0][0][0] - Path[0][1][0])**2 +
+                  (Path[0][0][1] - Path[0][1][1])**2)/vit
+    # print(tps, t)
+    if (t > tps):
+        x = Path[0][1][0]
+        y = Path[0][1][1]
+        t0 = time.time()
+        Path.pop(0)
+    else:
+        x = Path[0][0][0] - (t/tps)*(Path[0][0][0] - Path[0][1][0])
+        y = Path[0][0][1] - (t/tps)*(Path[0][0][1] - Path[0][1][1])
+
+    return np.array([[x], [y], [1.5]])
 
 
 def get_absolute_index(robotNo, cf_poses, robot_type):
@@ -177,6 +203,8 @@ def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacl
 # ====================================
 def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     # ====================================
+    global t0, list_resources, attrib_resources
+
     nbTB3 = len(tb3_poses[0])  # number of total tb3 robots in the use
     nbCF = len(cf_poses[0])  # number of total crazyflie nano drones in the use
     nbRMTT = len(rmtt_poses[0])  # number of total dji rmtt drones in the use
@@ -197,8 +225,10 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     abs_cf_id = get_absolute_index(robotNo, cf_poses, "Crazy")
 
     if Mode[abs_cf_id] == 0:
-        Poses = reg(Mode[Mode == 0].shape[0])
+
         robot_in_same_mode = np.logical_and(Mode == 0, cf_mask)
+        Poses = reg(robot_in_same_mode[robot_in_same_mode == True].shape[0])
+
         for i in np.where(robot_in_same_mode)[0]:
             if i != robotNo:
                 vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0,
@@ -208,12 +238,12 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
                 vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2,
                            i-1] - (Poses[abs_cf_id+1][2] - Poses[i+1][2]))
 
-        Ref = ref(0)
-        vx += -ko*(cf_poses[0, robotNo-1] - Ref[0] -
+        Ref = ref(time.time() - t0)
+        vx += -ko*(cf_poses[0, robotNo-1] - Ref[0, 0] -
                    (Poses[robotNo][0] - Poses[0][0]))
-        vy += -ko*(cf_poses[1, robotNo-1] - Ref[1] -
+        vy += -ko*(cf_poses[1, robotNo-1] - Ref[1, 0] -
                    (Poses[robotNo][1] - Poses[0][1]))
-        vz += -ko*(cf_poses[2, robotNo-1] - Ref[2] -
+        vz += -ko*(cf_poses[2, robotNo-1] - Ref[2, 0] -
                    (Poses[robotNo][2] - Poses[0][2]))
 
     elif Mode[abs_cf_id] == 1:
@@ -222,6 +252,41 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         pass
     elif Mode[abs_cf_id] == 3:
         pass
+
+    # --- TRANSITIONS ---
+
+    # From 0 (formation) to 1 (descente)
+    for index in range(len(list_resources)):
+        if (Mode[abs_cf_id] == 0) and (np.linalg.norm(ref(time.time()-t0)[:2] - list_resources[index][:2]) < 1.1) and (abs_cf_id == np.where(Mode == 0)[0][0]):
+
+            attrib_resources[abs_cf_id] = list_resources[index]
+
+            # resource becomes the drone's target
+            print('Drone ' + str(abs_cf_id) +
+                  ' is getting the resource at ' + str(list_resources[index]))
+            Mode[abs_cf_id] = 1
+            list_resources.pop(index)
+            break
+
+    # From 1 (descente) to 2 (remonte)
+    if (Mode[abs_cf_id] == 1) and (np.linalg.norm(cf_poses[:, robotNo-1] - attrib_resources[abs_cf_id]) < 0.3):
+        print('The resource at ' +
+              str(attrib_resources[abs_cf_id]) + ' was collected by drone ' + str(abs_cf_id))
+        Mode[abs_cf_id] = 2
+
+    # From 2 (remonte) to 3 (retourne a la formation)
+    tb3_poses[2] = 0
+    if (Mode[abs_cf_id] == 2) and (np.linalg.norm(cf_poses[:, robotNo-1] - tb3_poses) < 0.4):
+        print('The resource that was at ' +
+              str(attrib_resources[abs_cf_id]) + ' was delivered by drone ' + str(abs_cf_id))
+        attrib_resources[abs_cf_id] = None
+        Mode[abs_cf_id] = 3
+
+    # From 3 (retourne a la formation) to 0 (formation)
+    if (Mode[abs_cf_id] == 3) and (np.linalg.norm(cf_poses[:, robotNo-1] - ref(time.time()-t0)) < 1):
+        print('Drone ' + str(abs_cf_id) + ' has returned to formation')
+        Mode[abs_cf_id] = 0
+
     # -----------------------
     vx, vy, vz, takeoff, land = apply_anticollision(
         robotNo, tb3_poses, cf_poses, vx, vy, vz, takeoff, land)

@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from tp_algos import tb3_controller, cf_controller, rmtt_controller
+from tp_algos import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3
 
 # =============================================================================
 
@@ -267,10 +267,7 @@ class Simulateur:
 # ====================== end of class RobotSimulation==========================s
 
 if __name__ == '__main__':
-    a = 0.3
-    n = 3
-
-    fleet = Fleet(nbCF=3, nbTB3=1, PosesCF=[
+    fleet = Fleet(nbCF=nbCF, nbTB3=nbTB3, PosesCF=[
                   (-4, -1, 1.5), (-4, 0, 1.5), (-4, 1, 1.5)], PosesTB3=[(-4, 0, 0)])
     Sim = Simulateur(fleet)
     Sim.plot()
