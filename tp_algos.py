@@ -79,8 +79,8 @@ tb3_mask = np.zeros(Mode.shape, dtype=bool)
 tb3_mask[nbCF:] = True
 
 
-dist_inter_cf_mode_0 = 2
-radius_inter_robot_security_xyz = 0.5
+dist_inter_cf_mode_0 = 0.4
+radius_inter_robot_security_xyz = -1
 flee_speed = 0.5
 
 t0 = time.time()
@@ -93,10 +93,11 @@ attrib_resources = {i: None for i in range(nbCF)}
 def reg(n):
     global dist_inter_cf_mode_0
 
-    Poses = [(0, 0, 0)]
+    Poses = []
     r = dist_inter_cf_mode_0/(2*np.cos(np.pi/n))
     for i in range(n):
         Poses.append((r*np.cos(2*np.pi*i/n), r*np.sin(2*np.pi*i/n), 0))
+    Poses.append((0, 0, 0))
     return Poses
 
 
@@ -221,30 +222,34 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
 
     kp = 1
     ko = 10
-    Poses = reg(nbCF)
     abs_cf_id = get_absolute_index(robotNo, cf_poses, "Crazy")
 
     if Mode[abs_cf_id] == 0:
 
         robot_in_same_mode = np.logical_and(Mode == 0, cf_mask)
         Poses = reg(robot_in_same_mode[robot_in_same_mode == True].shape[0])
+        print(
+            "len...", robot_in_same_mode[robot_in_same_mode == True].shape[0])
+
+        id_pose = np.sum(robot_in_same_mode[:abs_cf_id])
 
         for i in np.where(robot_in_same_mode)[0]:
-            if i != robotNo:
+            id_pose_i = np.sum(robot_in_same_mode[:i])
+            if i != abs_cf_id:
                 vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0,
-                           i-1] - (Poses[abs_cf_id+1][0] - Poses[i+1][0]))
+                           i-1] - (Poses[id_pose][0] - Poses[id_pose_i][0]))
                 vy += -kp*(cf_poses[1, robotNo-1] - cf_poses[1,
-                           i-1] - (Poses[abs_cf_id+1][1] - Poses[i+1][1]))
+                           i-1] - (Poses[id_pose][1] - Poses[id_pose_i][1]))
                 vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2,
-                           i-1] - (Poses[abs_cf_id+1][2] - Poses[i+1][2]))
+                           i-1] - (Poses[id_pose][2] - Poses[id_pose_i][2]))
 
         Ref = ref(time.time() - t0)
         vx += -ko*(cf_poses[0, robotNo-1] - Ref[0, 0] -
-                   (Poses[robotNo][0] - Poses[0][0]))
+                   (Poses[id_pose][0] - Poses[-1][0]))
         vy += -ko*(cf_poses[1, robotNo-1] - Ref[1, 0] -
-                   (Poses[robotNo][1] - Poses[0][1]))
+                   (Poses[id_pose][1] - Poses[-1][1]))
         vz += -ko*(cf_poses[2, robotNo-1] - Ref[2, 0] -
-                   (Poses[robotNo][2] - Poses[0][2]))
+                   (Poses[id_pose][2] - Poses[-1][2]))
 
     elif Mode[abs_cf_id] == 1:
         pass
