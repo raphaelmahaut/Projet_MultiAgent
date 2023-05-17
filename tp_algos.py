@@ -69,7 +69,6 @@ nbTB3 = 1
 # 1 : descente
 # 2 : remonte
 # 3 : tourne autour
-# TODO: anticollision
 
 Mode = np.zeros(nbCF+nbTB3)
 
@@ -78,7 +77,11 @@ cf_mask[:nbCF] = True
 tb3_mask = np.zeros(Mode.shape, dtype=bool)
 tb3_mask[nbCF:] = True
 
+
 dist_inter_cf_mode_0 = 2
+radius_inter_robot_security_xyz = 0.5
+flee_speed = 0.5
+
 t = time.time()
 
 
@@ -101,6 +104,43 @@ def get_absolute_index(robotNo, cf_poses, robot_type):
         return robotNo-1
     if robot_type == "Turtle":
         return robotNo-1 + len(cf_poses[0])
+
+# Anticollision
+
+
+def measure_inter_dist(A):
+    assert len(A.shape) == 2, "wrong shape"
+    N = A.shape[0]
+    d = A.shape[1]
+
+    A_temp = np.expand_dims(A, axis=-1)
+    ones_temp = np.ones((N, 1, N))
+    prod_temp = A_temp@ones_temp
+    prod_temp = np.transpose(prod_temp, (0, 2, 1))
+    transposed = np.transpose(prod_temp, (1, 0, 2))
+    sqr_dist = (
+        (np.abs(prod_temp-transposed)**2)@np.ones((N, d, 1)))[:, :, 0]
+    dist = np.sqrt(sqr_dist)
+    return dist
+
+
+def apply_anticollision(robotNo, tb3_poses, cf_poses, vx, vy, vz, takeoff, land):
+    global radius_inter_robot_security_xyz, flee_speed
+
+    all_poses = np.concatenate((cf_poses, tb3_poses), axis=-1)
+    inter_dist_xyz = measure_inter_dist(all_poses.T)
+    robots_at_risk = np.where(
+        inter_dist_xyz[robotNo-1] <= radius_inter_robot_security_xyz)[0]
+
+    if len(robots_at_risk) > 1:
+        barycenter = np.mean(all_poses[:, robots_at_risk], axis=-1)
+        flee_vector = cf_poses[:, robotNo-1]-barycenter
+        flee_vector = flee_vector/np.linalg.norm(flee_vector)
+        flee_vector = flee_speed*flee_vector
+        vx, vy, vz = flee_vector
+        takeoff, land = False, False
+
+    return vx, vy, vz, takeoff, land
 
 
 # ===================================================================================
@@ -162,11 +202,11 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         for i in np.where(robot_in_same_mode)[0]:
             if i != robotNo:
                 vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0,
-                           i-1] - (Poses[abs_cf_id+1][0] - Poses[i][0]))
+                           i-1] - (Poses[abs_cf_id+1][0] - Poses[i+1][0]))
                 vy += -kp*(cf_poses[1, robotNo-1] - cf_poses[1,
-                           i-1] - (Poses[abs_cf_id+1][1] - Poses[i][1]))
+                           i-1] - (Poses[abs_cf_id+1][1] - Poses[i+1][1]))
                 vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2,
-                           i-1] - (Poses[abs_cf_id+1][2] - Poses[i][2]))
+                           i-1] - (Poses[abs_cf_id+1][2] - Poses[i+1][2]))
 
         Ref = ref(0)
         vx += -ko*(cf_poses[0, robotNo-1] - Ref[0] -
@@ -183,6 +223,8 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     elif Mode[abs_cf_id] == 3:
         pass
     # -----------------------
+    vx, vy, vz, takeoff, land = apply_anticollision(
+        robotNo, tb3_poses, cf_poses, vx, vy, vz, takeoff, land)
 
     return vx, vy, vz, takeoff, land
 # ====================================
