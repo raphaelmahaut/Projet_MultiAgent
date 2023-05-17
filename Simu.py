@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from tp_algos import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3
+from tp_algos import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3, list_resources, attrib_resources
 
 # =============================================================================
 
@@ -124,6 +124,7 @@ class Fleet:
             if rob.type == 'Crazy':
                 vx, vy, vz, rob.takeoff, rob.land = cf_controller(rob.index, self.tb3_poses, self.cf_poses,
                                                                   self.rmtt_poses, self.rms1_poses, self.obstacle_pose)
+                #print(rob.state, vx, vy, vz)
                 rob.integrateMotion(Te, vx, vy, vz)
             if rob.type == 'DJI':
                 vx, vy, vz, rob.takeoff, rob.land, rob.led = rmtt_controller(rob.index, self.tb3_poses, self.cf_poses,
@@ -213,6 +214,17 @@ class Simulateur:
             unique_handles = [handles[labels.index(
                 label)] for label in unique_labels]
 
+            for res in list_resources:
+                ax.scatter(res[0], res[1], res[2], color='orange',
+                           label='ressource', zorder=1)
+            for res in attrib_resources.values():
+                try:
+                    ax.scatter(res[0], res[1], res[2], color='pink',
+                               label='ressource', zorder=1)
+                except:
+                    pass
+
+            # Dessin du rectangle gris représentant
             x = [-4, 4, 4, -4]
             y = [-2, -2, 2, 2]
             z = [0, 0, 0, 0]
@@ -268,6 +280,6 @@ class Simulateur:
 
 if __name__ == '__main__':
     fleet = Fleet(nbCF=nbCF, nbTB3=nbTB3, PosesCF=[
-                  (-4, -1, 1.5), (-4, 0, 1.5), (-4, 1, 1.5)], PosesTB3=[(-4, 0, 0)])
+                  (-3, -1, 1.5), (-3, 1, 1.5), (-3, 0, 1.5)], PosesTB3=[(-4, 0, 0)])
     Sim = Simulateur(fleet)
     Sim.plot()
