@@ -53,13 +53,19 @@
 '''
 
 import numpy as np
+import random as rd
 import math
 import time
 
 # ==============   "GLOBAL" VARIABLES KNOWN BY ALL THE FUNCTIONS ===================
 # all variables declared here will be known by functions below
 # use keyword "global" inside a function if the variable needs to be modified by the function
+nbres = 3
 Mode = [(1, 2, 3), (), ()]
+Ressources = [(rd.uniform(-3, 4), rd.uniform(-2, 2), 0) for i in range(nbres)]
+Target = {i: None for i in range(3)}
+Path = [[(-3, 0), (-3, 1)], [(-3, 1), (3, 1)],
+        [(3, 1), (3, -1)], [(3, -1), (-3, -1)]]
 
 a = 0.3
 t = time.time()
@@ -76,7 +82,24 @@ def reg(n):
 
 
 def ref(t):
-    return (-4, 0, 1.5)
+    global init_state, Path, t0
+    vit = 0.3
+    if not Path:
+        return (-4, 0, 1.5)
+
+    tps = np.sqrt((Path[0][1][0] - Path[0][1][0])**2 +
+                  (Path[0][1][1] - Path[0][1][1])**2)/vit
+
+    if (t > tps):
+        x = Path[0][1][0]
+        y = Path[0][1][1]
+        t0 = time.time()
+        Path.pop(0)
+    else:
+        x = Path[0][0][0] + (1 - t/tps)*(Path[0][0][0] - Path[0][1][0])
+        y = Path[0][0][1] + (1 - t/tps)*(Path[0][0][1] - Path[0][1][1])
+
+    return (x, y, 1.5)
 
 # ===================================================================================
 
@@ -149,7 +172,7 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
                    (Poses[robotNo][2] - Poses[0][2]))
 
     elif robotNo in Mode[1]:
-        pass
+
     elif robotNo in Mode[2]:
         pass
 

@@ -222,12 +222,13 @@ class Simulateur:
             unique_handles = [handles[labels.index(
                 label)] for label in unique_labels]
 
-            x = [-5, 5, 5, -5]
+            x = [-4, 4, 4, -4]
             y = [-2, -2, 2, 2]
             z = [0, 0, 0, 0]
             ax.plot_trisurf(x, y, z, linewidth=0.2,
                             color='grey', alpha=0.5, zorder=2)
             ax.legend(unique_handles, unique_labels)
+
             ax.set_xlim3d(-6, 6)
             ax.set_ylim3d(-6, 6)
             ax.set_zlim3d(-1, 9)
