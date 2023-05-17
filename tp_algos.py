@@ -64,8 +64,7 @@ nbres = 3
 Mode = [(1, 2, 3), (), ()]
 Ressources = [(rd.uniform(-3, 4), rd.uniform(-2, 2), 0) for i in range(nbres)]
 Target = {i: None for i in range(3)}
-Path = [[(-3, 0), (-3, 1)], [(-3, 1), (3, 1)],
-        [(3, 1), (3, -1)], [(3, -1), (-3, -1)]]
+
 
 a = 0.3
 t = time.time()
@@ -79,6 +78,10 @@ def reg(n):
     for i in range(n):
         Poses.append((r*np.cos(2*np.pi*i/n), r*np.sin(2*np.pi*i/n), 0))
     return Poses
+
+
+Path = [[(-3, 0), (-3, 1)], [(-3, 1), (3, 1)],
+        [(3, 1), (3, -1)], [(3, -1), (-3, -1)]]
 
 
 def ref(t):
@@ -172,7 +175,7 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
                    (Poses[robotNo][2] - Poses[0][2]))
 
     elif robotNo in Mode[1]:
-
+        pass
     elif robotNo in Mode[2]:
         pass
 
