@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from tp_algos import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3, list_resources, attrib_resources
+from tp_algos_simu import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3, list_resources, attrib_resources
 
 # =============================================================================
 
@@ -112,23 +112,23 @@ class Fleet:
             self.robot.append(Robot('Autre', self.rms1_poses, i+1))
 
     # -------------------------------------------------------------------------
-    def integrateMotion(self, Te):
+    def integrateMotion(self, Te, t):
         # -------------------------------------------------------------------------
         # integrate fleet motion over one sampling period (Euler discretization) applying control input u
 
         for rob in self.robot:
             if rob.type == 'Turtle':
                 vx, vy = tb3_controller(rob.index, self.tb3_poses, self.cf_poses,
-                                        self.rmtt_poses, self.rms1_poses, self.obstacle_pose)
+                                        self.rmtt_poses, self.rms1_poses, self.obstacle_pose, t)
                 rob.integrateMotion(Te, vx, vy)
             if rob.type == 'Crazy':
                 vx, vy, vz, rob.takeoff, rob.land = cf_controller(rob.index, self.tb3_poses, self.cf_poses,
-                                                                  self.rmtt_poses, self.rms1_poses, self.obstacle_pose)
+                                                                  self.rmtt_poses, self.rms1_poses, self.obstacle_pose, t)
                 #print(rob.state, vx, vy, vz)
                 rob.integrateMotion(Te, vx, vy, vz)
             if rob.type == 'DJI':
                 vx, vy, vz, rob.takeoff, rob.land, rob.led = rmtt_controller(rob.index, self.tb3_poses, self.cf_poses,
-                                                                             self.rmtt_poses, self.rms1_poses, self.obstacle_pose)
+                                                                             self.rmtt_poses, self.rms1_poses, self.obstacle_pose, t)
                 rob.integrateMotion(Te, vx, vy, vz)
     # -------------------------------------------------------------------------
 
@@ -193,53 +193,63 @@ class Simulateur:
         # -------------------------------------------------------------------------
 
         while self.currentIndex < self.nb:
-            fig1 = plt.figure(1)
-            fig1.clf()
-            ax = fig1.add_subplot(111, projection='3d', proj_type='ortho')
-            for i in range(len(self.fleet.robot)):
-                rob = self.fleet.robot[i]
-                self.addDataFromRobot(rob, i)
-                if rob.type == 'Crazy':
-                    ax.scatter(
-                        rob.state[0], rob.state[1], rob.state[2], color='red', label='crazyflies', zorder=1)
-                elif rob.type == 'Turtle':
-                    ax.scatter(rob.state[0], rob.state[1], rob.state[2],
-                               color='green', label='turtlebot/waffle', zorder=1)
-                elif rob.type == 'Crazy':
-                    ax.scatter(rob.state[0], rob.state[1],
-                               rob.state[2], color='blue', label='dji', zorder=1)
+            if self.currentIndex % 50 == 0:
+                fig1 = plt.figure(1)
+                fig1.clf()
+                ax = fig1.add_subplot(111, projection='3d', proj_type='ortho')
+                for i in range(len(self.fleet.robot)):
+                    rob = self.fleet.robot[i]
+                    self.addDataFromRobot(rob, i)
+                    if rob.type == 'Crazy':
+                        ax.scatter(
+                            rob.state[0], rob.state[1], rob.state[2], color='red', label='crazyflies', zorder=1)
+                    elif rob.type == 'Turtle':
+                        ax.scatter(rob.state[0], rob.state[1], rob.state[2],
+                                   color='green', label='turtlebot/waffle', zorder=1)
+                    elif rob.type == 'Crazy':
+                        ax.scatter(rob.state[0], rob.state[1],
+                                   rob.state[2], color='blue', label='dji', zorder=1)
 
-            handles, labels = ax.get_legend_handles_labels()
-            unique_labels = list(set(labels))
-            unique_handles = [handles[labels.index(
-                label)] for label in unique_labels]
+                handles, labels = ax.get_legend_handles_labels()
+                unique_labels = list(set(labels))
+                unique_handles = [handles[labels.index(
+                    label)] for label in unique_labels]
 
-            for res in list_resources:
-                ax.scatter(res[0], res[1], res[2], color='orange',
-                           label='ressource', zorder=1)
-            for res in attrib_resources.values():
-                try:
-                    ax.scatter(res[0], res[1], res[2], color='pink',
+                for res in list_resources:
+                    ax.scatter(res[0], res[1], res[2], color='orange',
                                label='ressource', zorder=1)
-                except:
-                    pass
+                for res in attrib_resources.values():
+                    try:
+                        ax.scatter(res[0], res[1], res[2], color='pink',
+                                   label='ressource', zorder=1)
+                    except:
+                        pass
 
-            # Dessin du rectangle gris représentant
-            x = [-4, 4, 4, -4]
-            y = [-2, -2, 2, 2]
-            z = [0, 0, 0, 0]
-            ax.plot_trisurf(x, y, z, linewidth=0.2,
-                            color='grey', alpha=0.5, zorder=2)
-            ax.legend(unique_handles, unique_labels)
-            ax.set_xlim3d(-6, 6)
-            ax.set_ylim3d(-6, 6)
-            ax.set_zlim3d(-1, 9)
+                # Dessin du rectangle gris représentant
+                x = [-4, 4, 4, -4]
+                y = [-2, -2, 2, 2]
+                z = [0, 0, 0, 0]
+                ax.plot_trisurf(x, y, z, linewidth=0.2,
+                                color='grey', alpha=0.5, zorder=2)
+                ax.legend(unique_handles, unique_labels)
+                ax.set_xlim3d(-6, 6)
+                ax.set_ylim3d(-6, 6)
+                ax.set_zlim3d(-1, 9)
 
-            plt.pause(0.01)
-            self.fleet.integrateMotion(self.dt)
-            self.currentIndex = self.currentIndex + 1
-            print(
-                f"simulation en cours: {100*self.currentIndex/self.nb:.2f}%", end='\r')
+                plt.pause(0.01)
+                self.fleet.integrateMotion(self.dt, self.t[self.currentIndex])
+                self.currentIndex = self.currentIndex + 1
+                print(
+                    f"simulation en cours: {100*self.currentIndex/self.nb:.2f}%", end='\r')
+            else:
+                for i in range(len(self.fleet.robot)):
+                    rob = self.fleet.robot[i]
+                    self.addDataFromRobot(rob, i)
+
+                self.fleet.integrateMotion(self.dt, self.t[self.currentIndex])
+                self.currentIndex = self.currentIndex + 1
+                print(
+                    f"simulation en cours: {100*self.currentIndex/self.nb:.2f}%", end='\r')
 
         for i in range(len(self.fleet.robot)):
             fig2 = plt.figure(2)
@@ -281,5 +291,5 @@ class Simulateur:
 if __name__ == '__main__':
     fleet = Fleet(nbCF=nbCF, nbTB3=nbTB3, PosesCF=[
                   (-3, -1, 1.5), (-3, 1, 1.5), (-3, 0, 1.5)], PosesTB3=[(-4, 0, 0)])
-    Sim = Simulateur(fleet)
+    Sim = Simulateur(fleet, tf=60)
     Sim.plot()

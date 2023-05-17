@@ -83,7 +83,7 @@ dist_inter_cf_mode_0 = 0.4
 radius_inter_robot_security_xyz = 0.2
 flee_speed = 0.5
 
-t0 = time.time()
+t0 = time.time
 
 # [np.array([[rd.uniform(-1, 3)], [rd.uniform(-2, 2)], [0.2]]) for i in range(3)]
 list_resources = []

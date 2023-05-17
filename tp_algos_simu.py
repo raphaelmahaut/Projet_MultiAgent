@@ -83,10 +83,11 @@ dist_inter_cf_mode_0 = 0.4
 radius_inter_robot_security_xyz = 0.2
 flee_speed = 0.5
 
-t0 = time.time()
+t0 = 0
 
-# [np.array([[rd.uniform(-1, 3)], [rd.uniform(-2, 2)], [0.2]]) for i in range(3)]
-list_resources = []
+
+list_resources = [
+    np.array([[rd.uniform(-1, 3)], [rd.uniform(-2, 2)], [0.2]]) for i in range(3)]
 attrib_resources = {i: None for i in range(nbCF)}
 
 
@@ -117,14 +118,14 @@ def ref(t):
     tps = np.sqrt((Path[0][0][0] - Path[0][1][0])**2 +
                   (Path[0][0][1] - Path[0][1][1])**2)/vit
     # print(tps, t)
-    if (t > tps):
+    if (t - t0 > tps):
         x = Path[0][1][0]
         y = Path[0][1][1]
-        t0 = time.time()
+        t0 = t
         Path.pop(0)
     else:
-        x = Path[0][0][0] - (t/tps)*(Path[0][0][0] - Path[0][1][0])
-        y = Path[0][0][1] - (t/tps)*(Path[0][0][1] - Path[0][1][1])
+        x = Path[0][0][0] - ((t-t0)/tps)*(Path[0][0][0] - Path[0][1][0])
+        y = Path[0][0][1] - ((t-t0)/tps)*(Path[0][0][1] - Path[0][1][1])
 
     return np.array([[x], [y], [1.5]])
 
@@ -172,13 +173,13 @@ def apply_anticollision(robotNo, tb3_poses, cf_poses, vx, vy, vz, takeoff, land)
     return vx, vy, vz, takeoff, land
 
 
-def apply_sat_cf(vx, vy, vz):
-    vx = min(1.5, vx)
-    vx = max(-1.5, vx)
-    vy = min(1.5, vy)
-    vy = max(-1.5, vy)
-    vz = min(1.5, vz)
-    vz = max(-1.5, vz)
+def apply_sat_cf(vx, vy, vz, limit=0.5):
+    vx = min(limit, vx)
+    vx = max(-limit, vx)
+    vy = min(limit, vy)
+    vy = max(-limit, vy)
+    vz = min(limit, vz)
+    vz = max(-limit, vz)
     return vx, vy, vz
 
 # ===================================================================================
@@ -189,7 +190,7 @@ def apply_sat_cf(vx, vy, vz):
 # ====================================
 
 
-def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
+def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
     # ====================================
 
     nbTB3 = len(tb3_poses[0])  # number of total tb3 robots in the use
@@ -213,7 +214,7 @@ def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacl
 # should ONLY return (vx,vy,vz,wz,takeoff,land) for the robot command
 # max useable numbers of drones = 3
 # ====================================
-def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
+def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
     # ====================================
     global t0, list_resources, attrib_resources
 
@@ -231,9 +232,9 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     takeoff = False
     land = False
 
-    kp = 10
-    ko = 1
-    kc = 5
+    kp = 1
+    ko = 0.1
+    kc = 0.5
     abs_cf_id = get_absolute_index(robotNo, cf_poses, "Crazy")
 
     if Mode[abs_cf_id] == 0:
@@ -246,14 +247,14 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         for i in np.where(robot_in_same_mode)[0]:
             id_pose_i = np.sum(robot_in_same_mode[:i])
             if i != abs_cf_id:
-                vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0,
-                           i-1] - (Poses[id_pose][0] - Poses[id_pose_i][0]))
-                vy += -kp*(cf_poses[1, robotNo-1] - cf_poses[1,
-                           i-1] - (Poses[id_pose][1] - Poses[id_pose_i][1]))
-                vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2,
-                           i-1] - (Poses[id_pose][2] - Poses[id_pose_i][2]))
+                vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0, i] -
+                           (Poses[id_pose][0] - Poses[id_pose_i][0]))
+                vy += -kp*(cf_poses[1, robotNo-1] - cf_poses[1, i] -
+                           (Poses[id_pose][1] - Poses[id_pose_i][1]))
+                vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2, i] -
+                           (Poses[id_pose][2] - Poses[id_pose_i][2]))
 
-        Ref = ref(time.time() - t0)
+        Ref = ref(t)
         vx += -ko*(cf_poses[0, robotNo-1] - Ref[0, 0] -
                    (Poses[id_pose][0] - Poses[-1][0]))
         vy += -ko*(cf_poses[1, robotNo-1] - Ref[1, 0] -
@@ -270,20 +271,20 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     elif Mode[abs_cf_id] == 2:
         # Consensus entre le robot et le waffle
         vx = -kc*(cf_poses[0, robotNo-1] - tb3_poses[0, 0])
-        vx = -kc*(cf_poses[1, robotNo-1] - tb3_poses[1, 0])
+        vy = -kc*(cf_poses[1, robotNo-1] - tb3_poses[1, 0])
         vz = -kp*(cf_poses[2, robotNo-1] - 0.8)
 
     elif Mode[abs_cf_id] == 3:
+        Ref = ref(t)
         vx += -kc*(cf_poses[0, robotNo-1] - Ref[0, 0])
         vy += -kc*(cf_poses[1, robotNo-1] - Ref[1, 0])
         vz += -kc*(cf_poses[2, robotNo-1] - Ref[2, 0])
 
     # --- TRANSITIONS ---
-
     # From 0 (formation) to 1 (descente)
     for index in range(len(list_resources)):
-        if (Mode[abs_cf_id] == 0) and (np.linalg.norm(ref(time.time()-t0)[:2] - list_resources[index][:2]) < 1.1) and (abs_cf_id == np.where(Mode == 0)[0][0]):
-            attrib_resources[abs_cf_id] = list_resources[index]
+        if (Mode[abs_cf_id] == 0) and (np.linalg.norm(ref(t)[:2] - list_resources[index][:2]) < 1.1) and (abs_cf_id == np.where(Mode == 0)[0][0]):
+            attrib_resources[abs_cf_id] = np.copy(list_resources[index])
 
             # resource becomes the drone's target
             print('Drone ' + str(abs_cf_id) +
@@ -293,25 +294,26 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
             break
 
     # From 1 (descente) to 2 (remonte)
-    if (Mode[abs_cf_id] == 1) and (np.linalg.norm(cf_poses[:, robotNo-1] - attrib_resources[abs_cf_id]) < 0.3):
+    if (Mode[abs_cf_id] == 1) and (np.linalg.norm(cf_poses[:, robotNo-1:robotNo] - attrib_resources[abs_cf_id]) < 0.01):
         print('The resource at ' +
               str(attrib_resources[abs_cf_id]) + ' was collected by drone ' + str(abs_cf_id))
         Mode[abs_cf_id] = 2
 
     # From 2 (remonte) to 3 (retourne a la formation)
     tb3_poses[2] = 0
-    if (Mode[abs_cf_id] == 2) and (np.linalg.norm(cf_poses[:2, robotNo-1] - tb3_poses[:2]) < 0.1):
+    if (Mode[abs_cf_id] == 2) and (np.linalg.norm(cf_poses[:2, robotNo-1:robotNo] - tb3_poses[:2, :]) < 0.01):
         print('The resource that was at ' +
               str(attrib_resources[abs_cf_id]) + ' was delivered by drone ' + str(abs_cf_id))
         attrib_resources[abs_cf_id] = None
         Mode[abs_cf_id] = 3
 
     # From 3 (retourne a la formation) to 0 (formation)
-    if (Mode[abs_cf_id] == 3) and (np.linalg.norm(cf_poses[:, robotNo-1] - ref(time.time()-t0)) < 1):
+    if (Mode[abs_cf_id] == 3) and (np.linalg.norm(cf_poses[:, robotNo-1:robotNo] - ref(t)) < 1):
         print('Drone ' + str(abs_cf_id) + ' has returned to formation')
         Mode[abs_cf_id] = 0
 
     # -----------------------
+
     vx, vy, vz, takeoff, land = apply_anticollision(
         robotNo, tb3_poses, cf_poses, vx, vy, vz, takeoff, land)
     vx, vy, vz = apply_sat_cf(vx, vy, vz)
@@ -325,7 +327,7 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
 # should ONLY return (vx,vy,vz,wz,takeoff,land,led) for the robot command
 # max useable numbers of drones = 1
 # ====================================
-def rmtt_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
+def rmtt_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
     # ====================================
     nbTB3 = len(tb3_poses[0])  # number of total tb3 robots in the use
     nbCF = len(cf_poses[0])  # number of total crazyflie nano drones in the use
@@ -348,20 +350,20 @@ def rmtt_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstac
 
 
 # ======== ! DO NOT MODIFY ! ============
-def tb3_controller(robotNo, poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
+def tb3_controller(robotNo, poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
     vx, vy = tb3_control_fn(robotNo, poses, cf_poses,
-                            rmtt_poses, rms1_poses, obstacle_pose)
+                            rmtt_poses, rms1_poses, obstacle_pose, t)
     return vx, vy
 
 
-def cf_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
+def cf_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
     vx, vy, vz, takeoff, land = cf_control_fn(
-        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose)
+        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t)
     return vx, vy, vz, takeoff, land
 
 
-def rmtt_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
+def rmtt_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
     vx, vy, vz, takeoff, land, led = rmtt_control_fn(
-        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose)
+        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t)
     return vx, vy, vz, takeoff, land, led
 # =======================================
