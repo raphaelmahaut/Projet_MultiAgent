@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from tp_algos_simu import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3, list_resources, attrib_resources
+from simuEtWaffle import tb3_controller, cf_controller, rmtt_controller, nbCF, nbTB3, list_resources, attrib_resources
 
 # =============================================================================
 
@@ -290,6 +290,8 @@ class Simulateur:
 
 if __name__ == '__main__':
     fleet = Fleet(nbCF=nbCF, nbTB3=nbTB3, PosesCF=[
-                  (-3, -1, 1.5), (-3, 1, 1.5), (-3, 0, 1.5)], PosesTB3=[(-4, 0, 0)])
-    Sim = Simulateur(fleet, tf=60)
+                  (-3, -1, 1.5), (-3, 1, 1.5), (-3, 0, 1.5), (-3, 2, 1.5), (-3, -2, 1.5)], PosesTB3=[(-4., 0, 0)])
+    Sim = Simulateur(fleet, tf=80)
     Sim.plot()
+
+    # np.loadtxt(chemin_fichier, delimiter=",")

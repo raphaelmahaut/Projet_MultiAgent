@@ -88,15 +88,47 @@ dist_inter_cf_mode_0 = 0.4
 radius_inter_robot_security_xyz = 0.2
 flee_speed = 0.5
 
-t0 = 0
 
-
-list_resources = [
-    np.array([[rd.uniform(-1, 3)], [rd.uniform(-2, 2)], [0.2]]) for i in range(3)]
+list_resources = [np.array([[-1], [1.5], [0.2]]),
+                  np.array([[1], [-0.3], [0.2]]), np.array([[3], [-1.7], [0.2]])]
 attrib_resources = {i: None for i in range(nbCF)}
+Avail = [True for i in range(3)]
 
 
-def reg(n):
+def callback_mod(data):
+    global Mode
+    Mode = data.data
+    #rospy.loginfo(rospy.get_caller_id() + "Des ressources ont été prises %s")
+
+
+def callback_res(data):
+    global list_resources, attrib_resources
+    Info = data.data
+    for i in range(len(Info)):
+        if Info[i] != -1:
+            Avail[i] = False
+            attrib_resources[Info[i]] = list_resources[i]
+    #rospy.loginfo(rospy.get_caller_id() + "Des ressources ont été prises %s")
+
+
+def callback_path(data):
+    global Ref
+    Ref = np.array([[data.x], [data.y], [data.z]])
+    #print("pos", data.x, data.y, data.z, "Modes", Mode)
+    #rospy.loginfo(rospy.get_caller_id() + "La référence a bougé")
+
+
+rospy.Subscriber('Modes', Int8MultiArray, callback_mod)
+rospy.Subscriber('Ressources', Int8MultiArray, callback_res)
+rospy.Subscriber('Path', Point, callback_path)
+
+
+pub_ch = rospy.Publisher('Changement', Int8MultiArray, queue_size=10)
+
+Ref = np.array([[-3], [0], [1.5]])
+
+
+def reg_vec(n):
     global dist_inter_cf_mode_0
 
     Poses = []
@@ -105,41 +137,17 @@ def reg(n):
     else:
         r = dist_inter_cf_mode_0/(2*np.sin(np.pi/n))
     for i in range(n):
-        Poses.append((r*np.cos(2*np.pi*i/n), r*np.sin(2*np.pi*i/n), 0))
-    Poses.append((0, 0, 0))
+        Poses.append(
+            np.array([r*np.cos(2*np.pi*i/n), r*np.sin(2*np.pi*i/n), 0]))
+    Poses.append(np.array([0., 0., 0.]))
     return Poses
-
-
-Path = [[(-3, 0), (-3, 1)], [(-3, 1), (3, 1)],
-        [(3, 1), (3, -1)], [(3, -1), (-3, -1)]]
-
-
-def ref(t):
-    global Path, t0
-    vit = 0.3
-    if not Path:
-        return np.array([[-3], [0], [1.5]])
-
-    tps = np.sqrt((Path[0][0][0] - Path[0][1][0])**2 +
-                  (Path[0][0][1] - Path[0][1][1])**2)/vit
-    # print(tps, t)
-    if (t - t0 > tps):
-        x = Path[0][1][0]
-        y = Path[0][1][1]
-        t0 = t
-        Path.pop(0)
-    else:
-        x = Path[0][0][0] - ((t-t0)/tps)*(Path[0][0][0] - Path[0][1][0])
-        y = Path[0][0][1] - ((t-t0)/tps)*(Path[0][0][1] - Path[0][1][1])
-
-    return np.array([[x], [y], [1.5]])
 
 
 def get_absolute_index(robotNo, cf_poses, robot_type):
     if robot_type == "Crazy":
         return robotNo-1
     if robot_type == "Turtle":
-        return robotNo-1 + len(cf_poses[0])
+        return robotNo-1 + len(cf_poses[0, :])
 
 # Anticollision
 
@@ -187,6 +195,7 @@ def apply_sat_cf(vx, vy, vz, limit=0.5):
     vz = max(-limit, vz)
     return vx, vy, vz
 
+
 # ===================================================================================
 
 # Control function for turtlebot3 ground vehicle to be modified
@@ -195,7 +204,7 @@ def apply_sat_cf(vx, vy, vz, limit=0.5):
 # ====================================
 
 
-def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
+def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     # ====================================
 
     nbTB3 = len(tb3_poses[0])  # number of total tb3 robots in the use
@@ -208,6 +217,25 @@ def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacl
     #  --- TO BE MODIFIED ---
     vx = 0.0
     vy = 0.0
+
+    abs_tb_id = get_absolute_index(robotNo, cf_poses, "Turtle")
+    kp = 0.5
+    kc = 1.5
+
+    if Mode[abs_tb_id] == 0:
+        for i in range(nbTB3):
+
+            vx += -kp*(tb3_poses[0, robotNo - 1] - cf_poses[0, i])
+            vy += -kp*(tb3_poses[1, robotNo - 1] - cf_poses[1, i])
+
+    if Mode[abs_tb_id] == 1:
+        for i in range(nbTB3):
+            if Mode[i] == 2:
+                vx += -kc*(tb3_poses[0, robotNo - 1] - cf_poses[0, i])
+                vy += -kc*(tb3_poses[1, robotNo - 1] - cf_poses[1, i])
+
+    vx, vy, _ = apply_sat_cf(vx, vy, 0, 0.05)
+
     # -----------------------
 
     return vx, vy
@@ -219,9 +247,9 @@ def tb3_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacl
 # should ONLY return (vx,vy,vz,wz,takeoff,land) for the robot command
 # max useable numbers of drones = 3
 # ====================================
-def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
+def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     # ====================================
-    global t0, list_resources, attrib_resources
+    global list_resources, attrib_resources, Mode, attrib_resources, Ref, pub_ch, Avail
 
     nbTB3 = len(tb3_poses[0])  # number of total tb3 robots in the use
     nbCF = len(cf_poses[0])  # number of total crazyflie nano drones in the use
@@ -237,6 +265,7 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     takeoff = False
     land = False
 
+    v = np.array([0., 0, 0])
     kp = 1
     ko = 0.1
     kc = 0.5
@@ -245,25 +274,27 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     if Mode[abs_cf_id] == 0:
 
         robot_in_same_mode = np.logical_and(Mode == 0, cf_mask)
-        Poses = reg(robot_in_same_mode[robot_in_same_mode == True].shape[0])
+        Poses = reg_vec(
+            robot_in_same_mode[robot_in_same_mode == True].shape[0])
 
         id_pose = np.sum(robot_in_same_mode[:abs_cf_id])
 
         for i in np.where(robot_in_same_mode)[0]:
             id_pose_i = np.sum(robot_in_same_mode[:i])
             if i != abs_cf_id:
-                vx += -kp*(cf_poses[0, robotNo-1] - cf_poses[0, i] -
-                           (Poses[id_pose][0] - Poses[id_pose_i][0]))
-                vy += -kp*(cf_poses[1, robotNo-1] - cf_poses[1, i] -
-                           (Poses[id_pose][1] - Poses[id_pose_i][1]))
+                unit = (cf_poses[:, robotNo-1] - cf_poses[:, i]) / \
+                    np.linalg.norm(cf_poses[:, robotNo-1] - cf_poses[:, i])
+                v += -kp*(np.linalg.norm(cf_poses[:, robotNo-1] - cf_poses[:, i]) - np.linalg.norm(
+                    Poses[id_pose] - Poses[id_pose_i]))*unit
                 vz += -kp*(cf_poses[2, robotNo-1] - cf_poses[2, i] -
                            (Poses[id_pose][2] - Poses[id_pose_i][2]))
 
-        Ref = ref(t)
-        vx += -ko*(cf_poses[0, robotNo-1] - Ref[0, 0] -
-                   (Poses[id_pose][0] - Poses[-1][0]))
-        vy += -ko*(cf_poses[1, robotNo-1] - Ref[1, 0] -
-                   (Poses[id_pose][1] - Poses[-1][1]))
+        unit = (cf_poses[:, robotNo-1] - Ref[:, 0]) / \
+            np.linalg.norm(cf_poses[:, robotNo-1] - Ref[:, 0])
+        v += -ko*(np.linalg.norm(cf_poses[:, robotNo-1] - Ref[:, 0]) -
+                  np.linalg.norm(Poses[id_pose][:] - Poses[-1][:]))*unit
+        vx = v[0]
+        vy = v[1]
         vz += -ko*(cf_poses[2, robotNo-1] - Ref[2, 0] -
                    (Poses[id_pose][2] - Poses[-1][2]))
 
@@ -280,7 +311,6 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         vz = -kp*(cf_poses[2, robotNo-1] - 0.8)
 
     elif Mode[abs_cf_id] == 3:
-        Ref = ref(t)
         vx += -kc*(cf_poses[0, robotNo-1] - Ref[0, 0])
         vy += -kc*(cf_poses[1, robotNo-1] - Ref[1, 0])
         vz += -kc*(cf_poses[2, robotNo-1] - Ref[2, 0])
@@ -288,21 +318,23 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
     # --- TRANSITIONS ---
     # From 0 (formation) to 1 (descente)
     for index in range(len(list_resources)):
-        if (Mode[abs_cf_id] == 0) and (np.linalg.norm(ref(t)[:2] - list_resources[index][:2]) < 1.1) and (abs_cf_id == np.where(Mode == 0)[0][0]):
-            attrib_resources[abs_cf_id] = np.copy(list_resources[index])
+        if (Mode[abs_cf_id] == 0) and (np.linalg.norm(Ref[:2] - list_resources[index][:2]) < 1.1) and (abs_cf_id == np.where(Mode == 0)[0][0]) and (Avail[index]):
 
             # resource becomes the drone's target
             print('Drone ' + str(abs_cf_id) +
                   ' is getting the resource at ' + str(list_resources[index]))
-            Mode[abs_cf_id] = 1
-            list_resources.pop(index)
+            msg = Int8MultiArray()
+            msg.data = [robotNo-1, 1, index]
+            pub_ch.publish(msg)
             break
 
     # From 1 (descente) to 2 (remonte)
     if (Mode[abs_cf_id] == 1) and (np.linalg.norm(cf_poses[:, robotNo-1:robotNo] - attrib_resources[abs_cf_id]) < 0.01):
         print('The resource at ' +
               str(attrib_resources[abs_cf_id]) + ' was collected by drone ' + str(abs_cf_id))
-        Mode[abs_cf_id] = 2
+        msg = Int8MultiArray()
+        msg.data = [robotNo-1, 2, -1]
+        pub_ch.publish(msg)
 
     # From 2 (remonte) to 3 (retourne a la formation)
     tb3_poses[2] = 0
@@ -310,18 +342,22 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
         print('The resource that was at ' +
               str(attrib_resources[abs_cf_id]) + ' was delivered by drone ' + str(abs_cf_id))
         attrib_resources[abs_cf_id] = None
-        Mode[abs_cf_id] = 3
+        msg = Int8MultiArray()
+        msg.data = [robotNo-1, 3, -1]
+        pub_ch.publish(msg)
 
     # From 3 (retourne a la formation) to 0 (formation)
-    if (Mode[abs_cf_id] == 3) and (np.linalg.norm(cf_poses[:, robotNo-1:robotNo] - ref(t)) < 1):
+    if (Mode[abs_cf_id] == 3) and (np.linalg.norm(cf_poses[:, robotNo-1:robotNo] - Ref) < 1):
         print('Drone ' + str(abs_cf_id) + ' has returned to formation')
-        Mode[abs_cf_id] = 0
+        msg = Int8MultiArray()
+        msg.data = [robotNo-1, 3, -1]
+        pub_ch.publish(msg)
 
     # -----------------------
 
     vx, vy, vz, takeoff, land = apply_anticollision(
         robotNo, tb3_poses, cf_poses, vx, vy, vz, takeoff, land)
-    vx, vy, vz = apply_sat_cf(vx, vy, vz)
+    vx, vy, vz = apply_sat_cf(vx, vy, vz, 0.5)
 
     return vx, vy, vz, takeoff, land
 # ====================================
@@ -332,7 +368,7 @@ def cf_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle
 # should ONLY return (vx,vy,vz,wz,takeoff,land,led) for the robot command
 # max useable numbers of drones = 1
 # ====================================
-def rmtt_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
+def rmtt_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     # ====================================
     nbTB3 = len(tb3_poses[0])  # number of total tb3 robots in the use
     nbCF = len(cf_poses[0])  # number of total crazyflie nano drones in the use
@@ -355,20 +391,20 @@ def rmtt_control_fn(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstac
 
 
 # ======== ! DO NOT MODIFY ! ============
-def tb3_controller(robotNo, poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
+def tb3_controller(robotNo, poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     vx, vy = tb3_control_fn(robotNo, poses, cf_poses,
-                            rmtt_poses, rms1_poses, obstacle_pose, t)
+                            rmtt_poses, rms1_poses, obstacle_pose)
     return vx, vy
 
 
-def cf_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
+def cf_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     vx, vy, vz, takeoff, land = cf_control_fn(
-        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t)
+        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose)
     return vx, vy, vz, takeoff, land
 
 
-def rmtt_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t):
+def rmtt_controller(robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose):
     vx, vy, vz, takeoff, land, led = rmtt_control_fn(
-        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose, t)
+        robotNo, tb3_poses, cf_poses, rmtt_poses, rms1_poses, obstacle_pose)
     return vx, vy, vz, takeoff, land, led
 # =======================================

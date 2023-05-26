@@ -110,7 +110,7 @@ if __name__ == '__main__':
         end = False
         t0 = time.time()
         Modes = [0 for i in range(nbcf + nbtb)]
-        Ressources = [0 for i in range(nbres)]
+        Ressources = [-1 for i in range(nbcf)]
         Avail = [True for i in range(nbres)]
         Path = [[(-3, 0), (-3, 1)], [(-3, 1), (3, 1)],
                 [(3, 1), (3, -1)], [(3, -1), (-3, -1)]]
